@@ -1,0 +1,3 @@
+[submodule "scamplib"]
+	path = scamplib
+	url = https://github.com/brucemack/hello-scamp.git
