@@ -29,6 +29,7 @@ minicom -b 115200 -o -D /dev/ttyACM0
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
+#include "hardware/adc.h"
 
 #include "scamplib/fixed_fft.h"
 
@@ -40,6 +41,19 @@ static const FixedFFT fft(fftN, trigTable);
 
 static q15 fftWindow[fftN];
 static q15 samples[fftN];
+
+static const uint32_t adcClockHz = 48000000;
+static const uint16_t sampleFreqHz = 2000;
+static uint32_t adcSampleCount = 0;
+
+// TODO: UNDERSTAND THIS DIRECTIVE
+void __not_in_flash_func(adc_irq_handler) () {
+    adcSampleCount++;
+    if (adcSampleCount % 2000 == 0) {
+        printf("TICK %ld\n", adcSampleCount);
+    }
+    adc_fifo_drain();
+}
 
 int main() {
  
@@ -55,10 +69,29 @@ int main() {
         gpio_put(LED_PIN, 0);
         sleep_ms(250);
     }    
+
     puts("ADC Demo");
 
+    // Get the ADC iniialized
+    uint8_t adcChannel = 0;
+    adc_gpio_init(26 + adcChannel);
+    adc_init();
+    adc_select_input(adcChannel);
+    adc_fifo_setup(
+        true,   
+        false,
+        1,
+        false,
+        true
+    );
+    adc_set_clkdiv(adcClockHz / (uint32_t)sampleFreqHz);
+    irq_set_exclusive_handler(ADC_IRQ_FIFO, adc_irq_handler);    
+    adc_irq_set_enabled(true);
+    irq_set_enabled(ADC_IRQ_FIFO, true);
+    adc_run(true);
+
+    /*
     // Fill the samples with a tone
-    float sampleFreqHz = 2000;
     float toneFreqHz = 100;
     float PI = 3.1415926;
     float omega = 2.0f * PI * ((float)toneFreqHz / (float)sampleFreqHz);
@@ -70,27 +103,28 @@ int main() {
         samples[i] = f32_to_q15(sig);
     }
     uint16_t toneBin = (toneFreqHz / sampleFreqHz) * (float)fftN;
+    */
 
-    uint16_t runCount = 4;
-
-    // Do some test FFTs for timing purposes
-    for (uint16_t j = 0; j < runCount; j++) {
-        uint32_t startUs = time_us_32();
-        // Make a complex series
-        cq15 x[fftN];
-        for (uint16_t i = 0; i < fftN; i++) {
-            x[i].r = samples[i];
-            x[i].i = 0;
-        }
-        // Do the transformation
-        fft.transform(x);
-        // Display a few buckets
-        //printf("%d bin   %f\n", j, x[toneBin].mag_f32());
-        //printf("%d bin-1 %f\n", j, x[toneBin - 1].mag_f32());
-        //printf("%d bin+1 %f\n", j, x[toneBin + 1].mag_f32());
-        uint32_t endUs = time_us_32();
-        printf("Time elapsed per transform %ld\n", (endUs - startUs));
+    /*
+    uint32_t startUs = time_us_32();
+    // Make a complex series
+    cq15 x[fftN];
+    for (uint16_t i = 0; i < fftN; i++) {
+        x[i].r = samples[i];
+        x[i].i = 0;
     }
+    // Do the transformation
+    fft.transform(x);
+    // Display a few buckets
+    //printf("%d bin   %f\n", j, x[toneBin].mag_f32());
+    //printf("%d bin-1 %f\n", j, x[toneBin - 1].mag_f32());
+    //printf("%d bin+1 %f\n", j, x[toneBin + 1].mag_f32());
+    uint32_t endUs = time_us_32();
+    printf("Time elapsed per transform %ld\n", (endUs - startUs));
+    */
+
+    sleep_ms(100);
+    printf("ADC count %ld\n", adcSampleCount);
 
     // Prevent the main fom exiting
     while (1) { }
