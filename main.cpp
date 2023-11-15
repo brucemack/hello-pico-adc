@@ -1,19 +1,18 @@
 /*
-PI PICO Demonstration of interface to an si5351
+PI PICO Demonstration of ADC/FFT
+
+# Be sure to update the submodule
+git submodule update
 
 # Make sure that the PICO_SDK_PATH is set properly
 
-cd /home/bruce/pico/hello-pico
+cd /home/bruce/pico/hello-pico-adc
 # You need main.c and CMakeLists.txt
 cp ../pico-sdk/external/pico_sdk_import.cmake .
 mkdir build
 cd build
 cmake ..
 make
-
-# Connect the PI PICO to USB while pressing the BOOTSEL button.
-# And then:
-cp main.uf2 /media/bruce/RPI-RP2
 
 # Make sure the SWD is connected properly:
 # GPIO24 (Pin 18) to SWDIO
