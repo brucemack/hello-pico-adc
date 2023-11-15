@@ -30,6 +30,7 @@ minicom -b 115200 -o -D /dev/ttyACM0
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/adc.h"
+#include "hardware/sync.h"
 
 #include "scamplib/fixed_fft.h"
 
@@ -45,14 +46,43 @@ static q15 samples[fftN];
 static const uint32_t adcClockHz = 48000000;
 static const uint16_t sampleFreqHz = 2000;
 static uint32_t adcSampleCount = 0;
+static uint16_t lastMaxBin = 0;
 
-// TODO: UNDERSTAND THIS DIRECTIVE
-void __not_in_flash_func(adc_irq_handler) () {
-    adcSampleCount++;
-    if (adcSampleCount % 2000 == 0) {
-        printf("TICK %ld\n", adcSampleCount);
+// Decorates a function name, such that the function will execute from RAM 
+// (assuming it is not inlined into a flash function by the compiler)
+static void __not_in_flash_func(adc_irq_handler) () {
+    
+    uint32_t irq = save_and_disable_interrupts();
+
+    while (!adc_fifo_is_empty()) {
+        // Center around zero
+        const int16_t lastSample = adc_fifo_get() - 2048;
+        // TODO: REMOVE FLOAT
+        const float lastSampleF32 = lastSample / 2048.0;
+        // Collect samples in a circular buffer
+        samples[adcSampleCount % fftN] = f32_to_q15(lastSampleF32 * 0.5);
+        adcSampleCount++;
+
+        // FFT if necessary
+        if (adcSampleCount % fftN == 0) {
+            // Make a complex series
+            cq15 x[fftN];
+            for (uint16_t i = 0; i < fftN; i++) {
+                x[i].r = samples[i];
+                x[i].i = 0;
+            }
+            // Do the transformation
+            fft.transform(x);
+            lastMaxBin = max_idx(x, 1, (fftN / 2) - 1);
+        }
+
+        if (adcSampleCount % 1000 == 0) {
+            printf("TICK %ld sample: %d, bin: %d\n", 
+                adcSampleCount, lastSample, lastMaxBin);
+        }
     }
-    adc_fifo_drain();
+
+    restore_interrupts(irq);
 }
 
 int main() {
@@ -82,7 +112,7 @@ int main() {
         false,
         1,
         false,
-        true
+        false
     );
     adc_set_clkdiv(adcClockHz / (uint32_t)sampleFreqHz);
     irq_set_exclusive_handler(ADC_IRQ_FIFO, adc_irq_handler);    
